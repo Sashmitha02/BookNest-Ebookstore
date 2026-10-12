@@ -4,6 +4,7 @@ import './App.css';
 const API = 'http://localhost:8081/api';
 
 function App() {
+  const [page, setPage] = useState('home');
   const [books, setBooks] = useState([]);
   const [cart, setCart] = useState([]);
   const [name, setName] = useState('');
@@ -13,7 +14,7 @@ function App() {
   useEffect(() => {
     fetch(`${API}/books`)
       .then(response => {
-        if (!response.ok) throw new Error('Could not load books');
+        if (!response.ok) throw new Error();
         return response.json();
       })
       .then(setBooks)
@@ -30,7 +31,7 @@ function App() {
 
       if (existing) {
         if (existing.quantity >= book.stock) {
-          setMessage('Maximum available stock reached.');
+          setMessage('Maximum stock reached.');
           return current;
         }
 
@@ -42,21 +43,28 @@ function App() {
       }
 
       if (book.stock < 1) {
-        setMessage('This book is out of stock.');
+        setMessage('Book is out of stock.');
         return current;
       }
 
       return [...current, { ...book, quantity: 1 }];
     });
-
     setMessage('');
+  }
+
+  function updateQuantity(id, quantity) {
+    setCart(current => quantity === 0
+      ? current.filter(item => item.id !== id)
+      : current.map(item => item.id === id
+        ? { ...item, quantity }
+        : item));
   }
 
   async function placeOrder(event) {
     event.preventDefault();
 
-    if (cart.length === 0) {
-      setMessage('Please add a book to your cart.');
+    if (!cart.length) {
+      setMessage('Your cart is empty.');
       return;
     }
 
@@ -74,11 +82,12 @@ function App() {
         })
       });
 
-      if (!response.ok) throw new Error('Order could not be placed.');
+      if (!response.ok) throw new Error('Unable to place order.');
 
       const order = await response.json();
-
-      setMessage(`Order confirmed! Order ID: ${order.id}. Payment is simulated.`);
+      setMessage(
+        `Order placed successfully! Order ID: ${order.id}. Payment is simulated.`
+      );
       setCart([]);
       setName('');
       setAddress('');
@@ -91,44 +100,92 @@ function App() {
     <div className="app">
       <header>
         <h1>BookNest</h1>
-        <a href="#books">Browse Books</a>
-        <a href="#cart">Cart ({cart.reduce((n, item) => n + item.quantity, 0)})</a>
+        <nav>
+          <button onClick={() => setPage('home')}>Home</button>
+          <button onClick={() => setPage('books')}>Browse Books</button>
+          <button onClick={() => setPage('cart')}>
+            Cart ({cart.reduce((sum, item) => sum + item.quantity, 0)})
+          </button>
+        </nav>
       </header>
-
-      <section className="hero">
-        <p>WELCOME TO BOOKNEST</p>
-        <h2>Find your next favourite book.</h2>
-        <p>Discover stories, ideas and inspiration.</p>
-        <a className="button" href="#books">Explore Books</a>
-      </section>
 
       {message && <p className="message">{message}</p>}
 
-      <main>
-        <section id="books">
-          <h2>Our Book Collection</h2>
+      
+{page === 'home' && (
+  <>
+    <main className="home">
+      <h2>Find Your Next Favourite Book</h2>
+      <p>
+        Discover inspiring stories, explore new ideas, and find
+        your next great read with BookNest.
+      </p>
+      <button onClick={() => setPage('books')}>
+        Browse Books
+      </button>
+    </main>
+
+    <main className="featured">
+      <h2>Explore Our Collection</h2>
+      <p className="featured-intro">
+        A few popular picks to get you started.
+      </p>
+
+      <div className="book-grid">
+        {books.slice(0, 3).map(book => (
+          <article className="book-card" key={book.id}>
+            <p className="book-category">{book.category}</p>
+            <h3>{book.title}</h3>
+            <p>By {book.author}</p>
+            <h3>₹{Number(book.price).toFixed(2)}</h3>
+            <button onClick={() => addToCart(book)}>
+              Add to Cart
+            </button>
+          </article>
+        ))}
+      </div>
+
+      <button
+        className="view-all"
+        onClick={() => setPage('books')}
+      >
+        View All Books
+      </button>
+    </main>
+  </>
+)}
+
+
+      {page === 'books' && (
+        <main>
+          <h2>Available Books</h2>
           <div className="book-grid">
             {books.map(book => (
               <article className="book-card" key={book.id}>
-                <div className="book-cover">
-                  <span>BOOKNEST</span>
-                  <h3>{book.title}</h3>
-                </div>
-                <p>By {book.author}</p>
-                <p className="category">{book.category}</p>
-                <strong>₹{Number(book.price).toFixed(2)}</strong>
-                <p>{book.stock} in stock</p>
-                <button onClick={() => addToCart(book)}>
+                <h3>{book.title}</h3>
+                <p>Author: {book.author}</p>
+                <p>Category: {book.category}</p>
+                <p>Price: ₹{Number(book.price).toFixed(2)}</p>
+                <p>Stock: {book.stock}</p>
+                <button
+                  onClick={() => addToCart(book)}
+                  disabled={book.stock < 1}
+                >
                   Add to Cart
                 </button>
               </article>
             ))}
           </div>
-        </section>
+        </main>
+      )}
 
-        <section id="cart">
+      {page === 'cart' && (
+        <main>
           <h2>Your Cart</h2>
-          {cart.length === 0 ? <p>Your cart is empty.</p> : (
+
+          {cart.length === 0 ? (
+            <p>Your cart is empty.</p>
+          ) : (
             <>
               {cart.map(item => (
                 <div className="cart-row" key={item.id}>
@@ -137,21 +194,18 @@ function App() {
                   <select
                     value={item.quantity}
                     aria-label={`Quantity for ${item.title}`}
-                    onChange={event => {
-                      const quantity = Number(event.target.value);
-                      setCart(current => quantity === 0
-                        ? current.filter(book => book.id !== item.id)
-                        : current.map(book => book.id === item.id
-                          ? { ...book, quantity }
-                          : book));
-                    }}
+                    onChange={event =>
+                      updateQuantity(item.id, Number(event.target.value))
+                    }
                   >
-                    {Array.from({ length: item.stock }, (_, i) => i + 1)
-                      .map(quantity => (
-                        <option key={quantity} value={quantity}>
-                          {quantity}
-                        </option>
-                      ))}
+                    {Array.from(
+                      { length: item.stock },
+                      (_, index) => index + 1
+                    ).map(quantity => (
+                      <option key={quantity} value={quantity}>
+                        {quantity}
+                      </option>
+                    ))}
                     <option value="0">Remove</option>
                   </select>
                 </div>
@@ -160,26 +214,32 @@ function App() {
             </>
           )}
 
+          <h2>Checkout</h2>
           <form onSubmit={placeOrder}>
-            <h2>Checkout</h2>
             <label>
               Full Name
-              <input required value={name}
-                onChange={event => setName(event.target.value)} />
+              <input
+                required
+                value={name}
+                onChange={event => setName(event.target.value)}
+              />
             </label>
+
             <label>
               Delivery Address
-              <textarea required value={address}
-                onChange={event => setAddress(event.target.value)} />
+              <textarea
+                required
+                value={address}
+                onChange={event => setAddress(event.target.value)}
+              />
             </label>
+
             <button type="submit" disabled={cart.length === 0}>
-              Confirm Order
+              Place Order
             </button>
           </form>
-        </section>
-      </main>
-
-      <footer>BookNest — Your online bookstore</footer>
+        </main>
+      )}
     </div>
   );
 }
